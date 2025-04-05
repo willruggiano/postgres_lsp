@@ -22,6 +22,7 @@ pub use analyser::{
     RulePlainConfiguration, RuleSelector, RuleWithFixOptions, RuleWithOptions, Rules,
     partial_linter_configuration,
 };
+use biome_deserialize::Merge;
 use biome_deserialize_macros::{Merge, Partial};
 use bpaf::Bpaf;
 use database::{
@@ -115,6 +116,11 @@ impl PartialConfiguration {
                 disable_connection: Some(false),
             }),
         }
+    }
+
+    pub fn merge(&mut self, other: Self) -> Self {
+        self.merge_with(other);
+        self.clone()
     }
 }
 
