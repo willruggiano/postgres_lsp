@@ -8,6 +8,7 @@ use pgt_text_size::{TextRange, TextSize};
 use crate::workspace::ChangeFileParams;
 
 use super::{
+    annotation::AnnotationStore,
     change::StatementChange,
     document::{Document, StatementIterator},
     pg_query::PgQueryStore,
@@ -24,6 +25,7 @@ pub struct ParsedDocument {
     ast_db: PgQueryStore,
     cst_db: TreeSitterStore,
     sql_fn_db: SQLFunctionBodyStore,
+    annotation_db: AnnotationStore,
 }
 
 impl ParsedDocument {
@@ -33,6 +35,7 @@ impl ParsedDocument {
         let cst_db = TreeSitterStore::new();
         let ast_db = PgQueryStore::new();
         let sql_fn_db = SQLFunctionBodyStore::new();
+        let annotation_db = AnnotationStore::new();
 
         doc.iter().for_each(|(stmt, _, content)| {
             cst_db.add_statement(&stmt, content);
@@ -44,6 +47,7 @@ impl ParsedDocument {
             ast_db,
             cst_db,
             sql_fn_db,
+            annotation_db,
         }
     }
 
@@ -69,6 +73,7 @@ impl ParsedDocument {
                     self.cst_db.remove_statement(s);
                     self.ast_db.clear_statement(s);
                     self.sql_fn_db.clear_statement(s);
+                    self.annotation_db.clear_statement(s);
                 }
                 StatementChange::Modified(s) => {
                     tracing::debug!(
@@ -84,6 +89,7 @@ impl ParsedDocument {
                     self.cst_db.modify_statement(s);
                     self.ast_db.clear_statement(&s.old_stmt);
                     self.sql_fn_db.clear_statement(&s.old_stmt);
+                    self.annotation_db.clear_statement(&s.old_stmt);
                 }
             }
         }
