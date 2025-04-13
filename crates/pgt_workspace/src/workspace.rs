@@ -22,6 +22,7 @@ mod client;
 mod server;
 
 pub use server::StatementId;
+pub(crate) use server::parsed_document::*;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]

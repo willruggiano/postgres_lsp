@@ -8,7 +8,7 @@ use document::Document;
 use futures::{StreamExt, stream};
 use parsed_document::{
     AsyncDiagnosticsMapper, CursorPositionFilter, DefaultMapper, ExecuteStatementMapper,
-    GetCompletionsMapper, ParsedDocument, SyncDiagnosticsMapper,
+    ParsedDocument, SyncDiagnosticsMapper,
 };
 use pgt_analyse::{AnalyserOptions, AnalysisFilter};
 use pgt_analyser::{Analyser, AnalyserConfig, AnalyserContext};
@@ -29,7 +29,7 @@ use crate::{
             self, CodeAction, CodeActionKind, CodeActionsResult, CommandAction,
             CommandActionCategory, ExecuteStatementParams, ExecuteStatementResult,
         },
-        completions::{CompletionsResult, GetCompletionsParams},
+        completions::{CompletionsResult, GetCompletionsParams, get_statement_for_completions},
         diagnostics::{PullDiagnosticsParams, PullDiagnosticsResult},
     },
     settings::{Settings, SettingsHandle, SettingsHandleMut},
@@ -47,9 +47,9 @@ mod annotation;
 mod async_helper;
 mod change;
 mod db_connection;
-mod document;
+pub(crate) mod document;
 mod migration;
-mod parsed_document;
+pub(crate) mod parsed_document;
 mod pg_query;
 mod schema_cache_manager;
 mod sql_function;
@@ -470,37 +470,36 @@ impl Workspace for WorkspaceServer {
         &self,
         params: GetCompletionsParams,
     ) -> Result<CompletionsResult, WorkspaceError> {
-        let parser = self
+        let parsed_doc = self
             .parsed_documents
             .get(&params.path)
             .ok_or(WorkspaceError::not_found())?;
 
         let pool = match self.connection.read().unwrap().get_pool() {
             Some(pool) => pool,
-            None => return Ok(CompletionsResult::default()),
+            None => {
+                tracing::debug!("No connection to database. Skipping completions.");
+                return Ok(CompletionsResult::default());
+            }
         };
 
         let schema_cache = self.schema_cache.load(pool)?;
 
-        let items = parser
-            .iter_with_filter(
-                GetCompletionsMapper,
-                CursorPositionFilter::new(params.position),
-            )
-            .flat_map(|(_id, range, content, cst)| {
-                // `offset` is the position in the document,
-                // but we need the position within the *statement*.
+        match get_statement_for_completions(&parsed_doc, params.position) {
+            None => Ok(CompletionsResult::default()),
+            Some((_id, range, content, cst)) => {
                 let position = params.position - range.start();
-                pgt_completions::complete(pgt_completions::CompletionParams {
+
+                let items = pgt_completions::complete(pgt_completions::CompletionParams {
                     position,
                     schema: schema_cache.as_ref(),
                     tree: &cst,
                     text: content,
-                })
-            })
-            .collect();
+                });
 
-        Ok(CompletionsResult { items })
+                Ok(CompletionsResult { items })
+            }
+        }
     }
 }
 

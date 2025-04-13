@@ -5,6 +5,7 @@ use crate::{
     context::CompletionContext,
     item::CompletionItem,
     providers::{complete_columns, complete_functions, complete_tables},
+    sanitization::SanitizedCompletionParams,
 };
 
 pub const LIMIT: usize = 50;
@@ -17,8 +18,14 @@ pub struct CompletionParams<'a> {
     pub tree: &'a tree_sitter::Tree,
 }
 
+#[tracing::instrument(level = "debug", skip_all, fields(
+    text = params.text,
+    position = params.position.to_string()
+))]
 pub fn complete(params: CompletionParams) -> Vec<CompletionItem> {
-    let ctx = CompletionContext::new(&params);
+    let sanitized_params = SanitizedCompletionParams::from(params);
+
+    let ctx = CompletionContext::new(&sanitized_params);
 
     let mut builder = CompletionBuilder::new();
 

@@ -136,7 +136,7 @@ pub trait StatementMapper<'a> {
 
     fn map(
         &self,
-        parser: &'a ParsedDocument,
+        parsed: &'a ParsedDocument,
         id: StatementId,
         range: TextRange,
         content: &str,
@@ -144,7 +144,7 @@ pub trait StatementMapper<'a> {
 }
 
 pub trait StatementFilter<'a> {
-    fn predicate(&self, id: &StatementId, range: &TextRange) -> bool;
+    fn predicate(&self, id: &StatementId, range: &TextRange, content: &str) -> bool;
 }
 
 pub struct ParseIterator<'a, M, F> {
@@ -177,7 +177,7 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         // First check if we have any pending sub-statements to process
         if let Some((id, range, content)) = self.pending_sub_statements.pop() {
-            if self.filter.predicate(&id, &range) {
+            if self.filter.predicate(&id, &range, content.as_str()) {
                 return Some(self.mapper.map(self.parser, id, range, &content));
             }
             // If the sub-statement doesn't pass the filter, continue to the next item
@@ -213,7 +213,7 @@ where
             }
 
             // Return the current statement if it passes the filter
-            if self.filter.predicate(&root_id, &range) {
+            if self.filter.predicate(&root_id, &range, content) {
                 return Some(self.mapper.map(self.parser, root_id, range, content));
             }
 
@@ -335,14 +335,40 @@ impl<'a> StatementMapper<'a> for GetCompletionsMapper {
         range: TextRange,
         content: &str,
     ) -> Self::Output {
-        let cst_result = parser.cst_db.get_or_cache_tree(&id, content);
-        (id, range, content.to_string(), cst_result)
+        let tree = parser.cst_db.get_or_cache_tree(&id, content);
+        (id, range, content.into(), tree)
+    }
+}
+
+/*
+ * We allow an offset of two for the statement:
+ *
+ * select * from | <-- we want to suggest items for the next token.
+ *
+ * However, if the current statement is terminated by a semicolon, we don't apply any
+ * offset.
+ *
+ * select * from users; | <-- no autocompletions here.
+ */
+pub struct GetCompletionsFilter {
+    pub cursor_position: TextSize,
+}
+impl<'a> StatementFilter<'a> for GetCompletionsFilter {
+    fn predicate(&self, _id: &StatementId, range: &TextRange, content: &str) -> bool {
+        let is_terminated_by_semi = content.chars().last().is_some_and(|c| c == ';');
+
+        let measuring_range = if is_terminated_by_semi {
+            *range
+        } else {
+            range.checked_expand_end(2.into()).unwrap_or(*range)
+        };
+        measuring_range.contains(self.cursor_position)
     }
 }
 
 pub struct NoFilter;
 impl<'a> StatementFilter<'a> for NoFilter {
-    fn predicate(&self, _id: &StatementId, _range: &TextRange) -> bool {
+    fn predicate(&self, _id: &StatementId, _range: &TextRange, _content: &str) -> bool {
         true
     }
 }
@@ -358,7 +384,7 @@ impl CursorPositionFilter {
 }
 
 impl<'a> StatementFilter<'a> for CursorPositionFilter {
-    fn predicate(&self, _id: &StatementId, range: &TextRange) -> bool {
+    fn predicate(&self, _id: &StatementId, range: &TextRange, _content: &str) -> bool {
         range.contains(self.pos)
     }
 }
@@ -374,7 +400,7 @@ impl IdFilter {
 }
 
 impl<'a> StatementFilter<'a> for IdFilter {
-    fn predicate(&self, id: &StatementId, _range: &TextRange) -> bool {
+    fn predicate(&self, id: &StatementId, _range: &TextRange, _content: &str) -> bool {
         *id == self.id
     }
 }

@@ -73,9 +73,9 @@ mod tests {
         "#;
 
         let test_cases = vec![
-            (format!("select * from us{}", CURSOR_POS), "users"),
-            (format!("select * from em{}", CURSOR_POS), "emails"),
-            (format!("select * from {}", CURSOR_POS), "addresses"),
+            (format!("select * from u{}", CURSOR_POS), "users"),
+            (format!("select * from e{}", CURSOR_POS), "emails"),
+            (format!("select * from a{}", CURSOR_POS), "addresses"),
         ];
 
         for (query, expected_label) in test_cases {
